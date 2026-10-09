@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-heading: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+}
+
+/* 착! 달라붙는 slap-and-stick 애니메이션 키프레임 */
+@keyframes stickSlap {
+  0% {
+    opacity: 0;
+    transform: translateY(-40px) scale(1.15) rotate(4deg);
+    box-shadow: 0 25px 35px -5px rgba(0, 0, 0, 0.25);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(4px) scale(0.97) rotate(-2deg);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+  75% {
+    transform: translateY(-2px) scale(1.02) rotate(1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(var(--stick-rotate, 0deg));
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+}
+
+/* 부드러운 스티커 뗐다 붙이기 호버 효과 */
+.stick-note-card {
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease-out;
+  will-change: transform, box-shadow;
+}
+
+.stick-note-card:hover {
+  transform: translateY(-4px) rotate(calc(var(--stick-rotate, 0deg) * 0.5)) scale(1.02);
+  box-shadow: 0 16px 25px -4px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+}
+
+.animate-slap {
+  animation: stickSlap 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* 반투명 마스킹 와시 테이프 */
+.washi-tape {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
