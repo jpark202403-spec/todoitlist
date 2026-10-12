@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Pin,
   Moon,
@@ -13,6 +13,7 @@ import {
   X,
   Loader2,
   RefreshCw,
+  Move,
 } from "lucide-react";
 
 // 컬러 팔레트 정의 (DESIGN.md 및 screen.png 반영)
@@ -31,16 +32,16 @@ export interface Note {
 }
 
 export interface SheetRowItem {
-  timestamp: string | number;
-  datetime: string;
-  category: string;
-  content: string;
-  color: string;
-  state: string;
-  order: string | number;
+  timestamp?: string | number;
+  "timestamp "?: string | number;
+  datetime?: string;
+  category?: string;
+  content?: string;
+  "content "?: string;
+  color?: string;
+  state?: string;
+  order?: string | number;
 }
-
-const GOOGLE_SCRIPT_URL = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL || "";
 
 const COLOR_CONFIG: Record<
   NoteColor,
@@ -107,25 +108,24 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [sheetNotes, setSheetNotes] = useState<SheetRowItem[]>([]);
   const [isLoadingSheet, setIsLoadingSheet] = useState<boolean>(false);
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  // 인라인 수정 모달 또는 상태
+  // 인라인 수정 모달 상태
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editContentText, setEditContentText] = useState<string>("");
 
+  // 더블클릭 드래그 & 드롭 위치 이동 관련 상태
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   // ==========================================
-  // 구글 시트 연동 비동기 함수들 (CRUD)
+  // 구글 시트 연동 비동기 함수들 (Next.js /api/gsheet 프록시 경유)
   // ==========================================
 
   // [READ] 구글 시트 메모 목록 가져오기
   const fetchGoogleSheetNotes = async () => {
-    if (!GOOGLE_SCRIPT_URL) {
-      alert(".env.local에 NEXT_PUBLIC_GOOGLE_SCRIPT_URL이 설정되지 않았습니다.");
-      return;
-    }
     setIsLoadingSheet(true);
     try {
-      const res = await fetch(GOOGLE_SCRIPT_URL);
+      const res = await fetch("/api/gsheet", { cache: "no-store" });
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setSheetNotes(json.data);
@@ -134,7 +134,7 @@ export default function Home() {
       }
     } catch (err) {
       console.error(err);
-      alert("구글 시트 연동 오류: 네트워크 또는 URL을 확인하세요.");
+      alert("구글 시트 연동 오류: 네트워크 상태를 확인하세요.");
     } finally {
       setIsLoadingSheet(false);
     }
@@ -142,11 +142,9 @@ export default function Home() {
 
   // [CREATE] 새 메모 추가 API 전송
   const createGoogleSheetNote = async (newNote: Note) => {
-    if (!GOOGLE_SCRIPT_URL) return;
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
+      await fetch("/api/gsheet", {
         method: "POST",
-        mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create",
@@ -177,11 +175,9 @@ export default function Home() {
       color?: string;
     }
   ) => {
-    if (!GOOGLE_SCRIPT_URL) return;
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
+      await fetch("/api/gsheet", {
         method: "POST",
-        mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update",
@@ -196,19 +192,19 @@ export default function Home() {
     }
   };
 
-  // [DELETE] 메모 삭제 API 전송
+  // [DELETE] 메모 삭제 API 전송 (확실한 삭제 연동)
   const deleteGoogleSheetNote = async (timestamp: string) => {
-    if (!GOOGLE_SCRIPT_URL) return;
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
+      const res = await fetch("/api/gsheet", {
         method: "POST",
-        mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "delete",
           data: { timestamp },
         }),
       });
+      const data = await res.json();
+      console.log("구글 시트 삭제 응답:", data);
     } catch (err) {
       console.error("구글 시트 삭제 전송 실패:", err);
     }
@@ -216,16 +212,16 @@ export default function Home() {
 
   // [CLEAR ALL] 전체 삭제 API 전송
   const clearAllGoogleSheetNotes = async () => {
-    if (!GOOGLE_SCRIPT_URL) return;
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
+      const res = await fetch("/api/gsheet", {
         method: "POST",
-        mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "clearAll",
         }),
       });
+      const data = await res.json();
+      console.log("구글 시트 전체 삭제 응답:", data);
     } catch (err) {
       console.error("구글 시트 전체 삭제 전송 실패:", err);
     }
@@ -280,7 +276,7 @@ export default function Home() {
   const handleAddNote = () => {
     if (!content.trim()) return;
 
-    // 촉각적인 찰싹 소리 (Web Audio API로 순수 합성음 재생)
+    // 촉각적인 찰싹 소리 (Web Audio API)
     try {
       const audioCtx = new (window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -296,7 +292,7 @@ export default function Home() {
       osc.start();
       osc.stop(audioCtx.currentTime + 0.09);
     } catch {
-      // Audio not permitted or supported
+      // Audio not permitted
     }
 
     const newId = Date.now().toString();
@@ -328,7 +324,8 @@ export default function Home() {
   };
 
   // 완료 토글 (상태 수정)
-  const handleToggleComplete = (id: string) => {
+  const handleToggleComplete = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setNotes((prev) =>
       prev.map((n) => {
         if (n.id === id) {
@@ -402,6 +399,54 @@ export default function Home() {
   const handleOpenSheetModal = () => {
     setIsModalOpen(true);
     fetchGoogleSheetNotes();
+  };
+
+  // ==========================================
+  // 더블클릭 후 드래그 & 드롭으로 메모 위치 이동 핸들러
+  // ==========================================
+  const handleDoubleClick = (id: string) => {
+    setDraggingId(id);
+  };
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData("text/plain", id);
+    setDraggingId(id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (dragOverId !== id) {
+      setDragOverId(id);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+    setDragOverId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    const sourceId = draggingId || e.dataTransfer.getData("text/plain");
+    if (!sourceId || sourceId === targetId) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+
+    setNotes((prev) => {
+      const sourceIndex = prev.findIndex((n) => n.id === sourceId);
+      const targetIndex = prev.findIndex((n) => n.id === targetId);
+      if (sourceIndex === -1 || targetIndex === -1) return prev;
+
+      const updated = [...prev];
+      const [movedItem] = updated.splice(sourceIndex, 1);
+      updated.splice(targetIndex, 0, movedItem);
+      return updated;
+    });
+
+    setDraggingId(null);
+    setDragOverId(null);
   };
 
   // 카운트 계산
@@ -667,8 +712,13 @@ export default function Home() {
           })}
         </section>
 
+        {/* 이동 안내 힌트 문구 */}
+        <div className="flex items-center justify-between px-2 text-[11px] text-slate-400">
+          <span>💡 메모를 <b>더블클릭</b>하면 드래그하여 순서를 이동할 수 있습니다.</span>
+        </div>
+
         {/* ================= 포스트잇 보드 리스트 ================= */}
-        <div className="flex flex-col gap-4 mt-2 pb-8">
+        <div className="flex flex-col gap-4 pb-8">
           {filteredNotes.length === 0 ? (
             <div
               className={`rounded-3xl border-2 border-dashed py-12 px-6 flex flex-col items-center justify-center text-center transition-colors ${
@@ -689,10 +739,18 @@ export default function Home() {
             filteredNotes.map((note) => {
               const config = COLOR_CONFIG[note.color];
               const isNewlyAdded = newlyAddedId === note.id;
+              const isThisDragging = draggingId === note.id;
+              const isTargetOver = dragOverId === note.id;
 
               return (
                 <article
                   key={note.id}
+                  draggable={isThisDragging}
+                  onDoubleClick={() => handleDoubleClick(note.id)}
+                  onDragStart={(e) => handleDragStart(e, note.id)}
+                  onDragOver={(e) => handleDragOver(e, note.id)}
+                  onDragEnd={handleDragEnd}
+                  onDrop={(e) => handleDrop(e, note.id)}
                   style={
                     {
                       "--stick-rotate": `${note.rotation}deg`,
@@ -704,6 +762,14 @@ export default function Home() {
                     isNewlyAdded ? "animate-slap" : ""
                   } ${
                     note.completed ? "opacity-60 saturate-70" : "opacity-100"
+                  } ${
+                    isThisDragging
+                      ? "ring-2 ring-amber-500 scale-102 shadow-2xl cursor-grab"
+                      : "cursor-default"
+                  } ${
+                    isTargetOver && !isThisDragging
+                      ? "border-dashed border-amber-500 bg-amber-50/20"
+                      : ""
                   }`}
                 >
                   {/* 상단 반투명 마스킹 와시 테이프 장식 */}
@@ -713,6 +779,14 @@ export default function Home() {
                   {note.pinned && (
                     <div className="absolute -top-3 left-3 text-red-500 drop-shadow-md z-10">
                       <Pin className="w-5 h-5 fill-red-500" />
+                    </div>
+                  )}
+
+                  {/* 더블클릭 활성화 시 이동 모드 뱃지 */}
+                  {isThisDragging && (
+                    <div className="absolute -top-3 right-3 bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1 shadow-md animate-bounce">
+                      <Move className="w-3 h-3" />
+                      <span>이동 중...</span>
                     </div>
                   )}
 
@@ -728,10 +802,23 @@ export default function Home() {
                     </div>
 
                     <div className="flex items-center gap-1">
+                      {/* [완료 체크 버튼]: 수정 버튼과 동일한 크기(p-1, 3.5x3.5)로 왼쪽에 배치 */}
+                      <button
+                        onClick={(e) => handleToggleComplete(note.id, e)}
+                        className={`p-1 rounded-md transition-all cursor-pointer ${
+                          note.completed
+                            ? "bg-slate-800 text-white dark:bg-white dark:text-slate-900 shadow-xs"
+                            : "text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10"
+                        }`}
+                        title={note.completed ? "완료 취소" : "완료 체크"}
+                      >
+                        <Check className="w-3.5 h-3.5 stroke-3" />
+                      </button>
+
                       {/* 내용 수정 버튼 */}
                       <button
                         onClick={(e) => handleOpenEdit(note, e)}
-                        className="p-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors rounded-md cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors rounded-md cursor-pointer"
                         title="메모 및 일시 수정"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -740,10 +827,10 @@ export default function Home() {
                       {/* 핀 토글 버튼 */}
                       <button
                         onClick={(e) => handleTogglePin(note.id, e)}
-                        className={`p-1 rounded-md transition-colors cursor-pointer ${
+                        className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 ${
                           note.pinned
                             ? "text-red-500"
-                            : "text-slate-400/70 hover:text-slate-600 dark:hover:text-slate-300"
+                            : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                         }`}
                         title={note.pinned ? "고정 해제" : "상단 고정"}
                       >
@@ -754,36 +841,21 @@ export default function Home() {
                         />
                       </button>
 
-                      {/* 삭제 버튼 */}
+                      {/* 삭제 버튼 (구글시트 삭제 연동) */}
                       <button
                         onClick={(e) => handleDeleteNote(note.id, e)}
-                        className="p-1 text-slate-400/70 hover:text-red-600 transition-colors rounded-md cursor-pointer"
-                        title="메모 삭제"
+                        className="p-1 text-slate-400 hover:text-red-600 hover:bg-black/5 dark:hover:bg-white/10 transition-colors rounded-md cursor-pointer"
+                        title="메모 삭제 (구글시트 연동)"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
 
-                  {/* 메모 내용 & 체크 토글 영역 */}
-                  <div
-                    onClick={() => handleToggleComplete(note.id)}
-                    className="flex items-start gap-3 cursor-pointer pt-0.5"
-                  >
-                    {/* 체크박스 */}
-                    <div
-                      className={`w-5 h-5 mt-0.5 rounded-md border flex items-center justify-center transition-all ${
-                        note.completed
-                          ? "bg-slate-700 border-slate-700 text-white scale-95"
-                          : "border-slate-400/80 bg-white/60 dark:bg-black/20 hover:scale-105"
-                      }`}
-                    >
-                      {note.completed && <Check className="w-3.5 h-3.5 stroke-3" />}
-                    </div>
-
-                    {/* 본문 텍스트 */}
+                  {/* 메모 내용 영역 */}
+                  <div className="pt-0.5">
                     <p
-                      className={`flex-1 text-sm font-medium leading-relaxed whitespace-pre-wrap ${
+                      className={`text-sm font-medium leading-relaxed whitespace-pre-wrap ${
                         config.text
                       } ${
                         note.completed
@@ -872,34 +944,38 @@ export default function Home() {
                   구글 시트에 저장된 메모가 없습니다.
                 </div>
               ) : (
-                sheetNotes.map((item, idx) => (
-                  <div
-                    key={item.timestamp || idx}
-                    className={`p-3.5 rounded-2xl border transition-all ${
-                      isDark ? "bg-slate-800/60 border-slate-700" : "bg-slate-50 border-slate-200"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-[11px] mb-1.5 text-slate-400">
-                      <span className="font-semibold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                        {item.category || "todo"}
-                      </span>
-                      <span className="font-mono">
-                        {item.datetime ? new Date(item.datetime).toLocaleString() : item.timestamp}
-                      </span>
+                sheetNotes.map((item, idx) => {
+                  const itemTs = item.timestamp || item["timestamp "] || idx;
+                  const itemContent = item.content || item["content "] || "";
+                  return (
+                    <div
+                      key={itemTs}
+                      className={`p-3.5 rounded-2xl border transition-all ${
+                        isDark ? "bg-slate-800/60 border-slate-700" : "bg-slate-50 border-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[11px] mb-1.5 text-slate-400">
+                        <span className="font-semibold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                          {item.category || "todo"}
+                        </span>
+                        <span className="font-mono">
+                          {item.datetime ? new Date(item.datetime).toLocaleString() : String(itemTs)}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium leading-relaxed">{itemContent}</p>
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                        <span>색상: {item.color}</span>
+                        <span
+                          className={`font-semibold ${
+                            item.state === "completed" ? "text-emerald-500" : "text-amber-500"
+                          }`}
+                        >
+                          상태: {item.state === "completed" ? "완료됨" : "진행중"}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-sm font-medium leading-relaxed">{item.content}</p>
-                    <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-                      <span>색상: {item.color}</span>
-                      <span
-                        className={`font-semibold ${
-                          item.state === "completed" ? "text-emerald-500" : "text-amber-500"
-                        }`}
-                      >
-                        상태: {item.state === "completed" ? "완료됨" : "진행중"}
-                      </span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
